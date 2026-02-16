@@ -1,0 +1,12 @@
+[2026-02-16 09:10:15] INFO Service API started on port 8080
+[2026-02-16 09:10:16] DEBUG Loading routes from config file
+[2026-02-16 09:10:17] WARNING Memory usage at 75%
+[2026-02-16 09:10:18] WARNING GC pressure increasing
+[2026-02-16 09:10:25] INFO Request received GET /api/users
+[2026-02-16 09:10:26] ERROR Database query failed with timeout
+[2026-02-16 09:10:27] ERROR Query: SELECT * FROM users WHERE active=true
+[2026-02-16 09:10:28] ERROR Timeout after 5000ms
+[2026-02-16 09:10:29] WARNING Returning cached results instead
+[2026-02-16 09:10:30] INFO Request completed with status 200
+[2026-02-16 09:11:00] DEBUG Periodic health check running
+[2026-02-16 09:11:01] INFO All systems operational

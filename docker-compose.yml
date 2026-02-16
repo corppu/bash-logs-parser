@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # Test basic pattern matching
+  test-error-pattern:
+    build: .
+    volumes:
+      - ./test-data:/test-data
+      - ./test-results:/test-results
+    command: ["-p", "ERROR", "-i", "/test-data", "-o", "/test-results/test1-errors"]
+    container_name: test-error-pattern
+
+  # Test multiple patterns
+  test-multi-pattern:
+    build: .
+    volumes:
+      - ./test-data:/test-data
+      - ./test-results:/test-results
+    command: ["-p", "ERROR", "-p", "WARNING", "-i", "/test-data", "-o", "/test-results/test2-errors-warnings"]
+    container_name: test-multi-pattern
+    depends_on:
+      - test-error-pattern
+
+  # Test with custom timestamp regex
+  test-custom-timestamp:
+    build: .
+    volumes:
+      - ./test-data:/test-data
+      - ./test-results:/test-results
+    command: ["-p", "Database", "-i", "/test-data", "-o", "/test-results/test3-custom-timestamp", "-t", "^\\[[0-9]{4}-"]
+    container_name: test-custom-timestamp
+    depends_on:
+      - test-multi-pattern

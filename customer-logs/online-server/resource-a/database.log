@@ -1,0 +1,59 @@
+[2026-02-15T08:30:00.000Z] Database connection pool initialized
+{
+  "database": "production_db",
+  "host": "db-primary.azure.com",
+  "port": 5432,
+  "driver": "postgresql",
+  "pool_size": 50,
+  "min_idle": 10,
+  "connection_timeout_ms": 5000,
+  "idle_timeout_ms": 900000
+}
+
+[2026-02-15T08:45:15.234Z] Data migration task started
+Migration ID: mig_2026021501
+Version: 2.3.1 -> 2.4.0
+Expected duration: 45 minutes
+Tables affected: 48
+
+[2026-02-15T08:45:20.567Z] Migration step 1: Creating new column in users table
+ALTER TABLE users ADD COLUMN last_activity_at TIMESTAMP DEFAULT NOW()
+SQL execution time: 1234ms
+Rows affected: 156789
+
+[2026-02-15T08:45:35.890Z] Migration step 2: Backfill data
+SELECT COUNT(*) FROM users: 156789
+Update progress: 25% complete
+Current batch: 39000/156789 records
+Estimated time remaining: 28 minutes
+
+[2026-02-15T08:50:45.123Z] Migration step 2: Backfill data (continued)
+{
+  "progress_percent": 100,
+  "total_duration_ms": 309234,
+  "records_processed": 156789,
+  "failed_records": 0,
+  "average_speed_records_per_second": 507.4
+}
+
+[2026-02-15T08:51:00.456Z] Migration step 3: Create indexes
+Creating index: idx_users_last_activity_at
+Index creation time: 2345ms
+Estimated query improvement: 1200x faster for activity-based queries
+
+[2026-02-15T09:00:00.789Z] Database maintenance task completed
+Total duration: 30 minutes
+Schema changes applied: 12
+Indexes created: 3
+Data validation: PASSED
+Integrity check: PASSED
+
+[2026-02-15T09:05:30.234Z] Replication lag monitoring
+{
+  "primary_server": "db-primary.azure.com",
+  "replica_server": "db-replica-01.azure.com",
+  "replication_lag_ms": 2.34,
+  "replication_status": "healthy",
+  "transactions_replicated": 45623
+}
+

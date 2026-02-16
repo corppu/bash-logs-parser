@@ -1,0 +1,63 @@
+[2026-02-15T07:55:00.000Z] Service resource-a initialization
+Service type: API Server
+Port: 3001
+Max connections: 100
+
+[2026-02-15T07:55:15.234Z] Cache layer initialized
+{
+  "cache_type": "redis",
+  "host": "cache.local",
+  "port": 6379,
+  "ttl_seconds": 1800,
+  "max_keys": 50000
+}
+
+[2026-02-15T08:10:30.567Z] Incoming request: GET /items?filter=active&limit=100
+Client IP: 192.168.1.45
+User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+Accept-Encoding: gzip, deflate
+
+[2026-02-15T08:10:31.123Z] Query execution started
+Database: PostgreSQL
+Schema: public
+Table: items
+Where clause: status = 'active'
+Limit: 100
+Offset: 0
+
+[2026-02-15T08:10:31.890Z] Query execution completed
+{
+  "rows_returned": 85,
+  "execution_time_ms": 234,
+  "query_plan": "Index Scan using idx_items_status",
+  "cache_status": "MISS",
+  "connection_pool": {
+    "active": 3,
+    "idle": 7,
+    "wait_queue": 0
+  }
+}
+
+[2026-02-15T08:10:32.456Z] Response transformation in progress
+Applying filters: active=true, sort=created_at:desc
+Formatting response with compression enabled
+Estimated response size: 4.2KB (1.1KB gzipped)
+
+[2026-02-15T08:10:32.789Z] Response sent successfully
+HTTP Status: 200 OK
+Content-Type: application/json
+Content-Length: 1125 bytes
+Compression: gzip
+X-Response-Time: 1789ms
+
+[2026-02-15T08:15:45.234Z] Warning: Slow query detected
+Query ID: q_789456
+Execution time: 5432ms (threshold: 1000ms)
+Table: items_history
+Queries per minute: 145
+
+[2026-02-15T08:20:00.567Z] Cache eviction cycle started
+Items evicted due to TTL: 2341
+Items evicted due to memory limits: 156
+Total cache size after cleanup: 47,503 keys (94.5% capacity)
+
