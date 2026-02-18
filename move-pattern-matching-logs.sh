@@ -383,9 +383,73 @@ process_unzipped() {
         echo -e "${GREEN}✓ Extracted $count lines [Lines: $PROCESSED_LINES/$TOTAL_LINES - ${line_percent}%] ($lines_remaining left) [ETA: $line_eta_str, Speed: $line_speed_str] to: $(basename "$output_file")${NC}"
         ((MATCH_COUNT++))
     else
-        # Remove empty output file
-        rm -f "$output_file"
+        # Fail if a matching input file did not produce output
+        echo -e "${RED}Error: Expected output not created for $rel_path${NC}" >&2
+        exit 1
     fi
+}
+
+##############################################################################
+# Print processing statistics
+##############################################################################
+print_statistics() {
+    # Calculate total time
+    local end_time=$(date +%s)
+    local total_time=$((end_time - START_TIME))
+    local duration_str=$(format_duration $total_time)
+
+    # Print summary
+    echo ""
+    echo -e "${YELLOW}================================${NC}"
+    echo -e "${YELLOW}Processing Summary:${NC}"
+    echo -e "${YELLOW}  Total files scanned: $TOTAL_FILES${NC}"
+    echo -e "${YELLOW}  Total zip files scanned: $TOTAL_ZIP_FILES${NC}"
+    echo -e "${YELLOW}  Total gz files scanned: $TOTAL_GZ_FILES${NC}"
+    echo -e "${YELLOW}  Files skipped: $SKIPPED_COUNT${NC}"
+    echo ""
+    echo -e "${YELLOW}File Statistics:${NC}"
+    echo -e "${YELLOW}  Files processed: $PROCESSED_FILES out of $TOTAL_FILES (100%)${NC}"
+
+    echo ""
+    echo -e "${YELLOW}Line Statistics:${NC}"
+    if [[ $TOTAL_LINES -gt 0 ]]; then
+        local line_percent=$((PROCESSED_LINES * 100 / TOTAL_LINES))
+        local lines_not_extracted=$((TOTAL_LINES - PROCESSED_LINES))
+        local not_extracted_percent=$((100 - line_percent))
+        echo -e "${GREEN}  Lines extracted: $PROCESSED_LINES out of $TOTAL_LINES (${line_percent}%)${NC}"
+        echo -e "${YELLOW}  Lines not extracted: $lines_not_extracted ($not_extracted_percent%)${NC}"
+    else
+        echo -e "${YELLOW}  No lines processed${NC}"
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Time Statistics:${NC}"
+    echo -e "${YELLOW}  Total processing time: $duration_str${NC}"
+    if [[ $total_time -gt 0 ]]; then
+        if [[ $PROCESSED_FILES -gt 0 ]]; then
+            local avg_time_per_file=$((total_time / PROCESSED_FILES))
+            echo -e "${YELLOW}  Average time per file: $(format_duration $avg_time_per_file)${NC}"
+        fi
+        if [[ $PROCESSED_LINES -gt 0 ]]; then
+            local lines_per_sec=$((PROCESSED_LINES / total_time))
+            if [[ $lines_per_sec -gt 0 ]]; then
+                echo -e "${YELLOW}  Processing speed: $lines_per_sec lines/second${NC}"
+            else
+                local secs_per_line=$((total_time / PROCESSED_LINES))
+                echo -e "${YELLOW}  Processing speed: ${secs_per_line}s per line${NC}"
+            fi
+        fi
+    fi
+
+    echo ""
+    if [[ $MATCH_COUNT -eq 0 ]]; then
+        echo -e "${YELLOW}  No matching complete entries extracted.${NC}"
+    else
+        echo -e "${GREEN}  ✓ Successfully processed $MATCH_COUNT file(s)${NC}"
+        echo -e "${GREEN}  ✓ Total matched entries extracted: $ENTRY_COUNT${NC}"
+        echo -e "${GREEN}  ✓ Results saved to: $OUTPUT_DIR${NC}"
+    fi
+    echo -e "${YELLOW}================================${NC}"
 }
 
 ##############################################################################
@@ -428,7 +492,7 @@ process_gz() {
 
     # Process extracted contents recursively
     # Check for nested archives (zip or gz files) and other files
-    find "$temp_dir" -type f -print0 | while IFS= read -r -d '' extracted_file; do
+    find "$temp_dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' extracted_file; do
         local extracted_rel_path
         extracted_rel_path="${extracted_file#$temp_dir/}"
         
@@ -450,11 +514,13 @@ process_gz() {
                 fi
                 ;;
         esac
-    done
+    done || true
     
     
     # Clean up temporary directory
     rm -rf "$temp_dir"
+
+    print_statistics
 }
 
 ##############################################################################
@@ -497,7 +563,7 @@ process_zip() {
 
     # Process extracted contents recursively
     # Check for nested archives (zip or gz files) and other files
-    find "$temp_dir" -type f -print0 | while IFS= read -r -d '' extracted_file; do
+    find "$temp_dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' extracted_file; do
         local extracted_rel_path
         extracted_rel_path="${extracted_file#$temp_dir/}"
         
@@ -519,11 +585,13 @@ process_zip() {
                 fi
                 ;;
         esac
-    done
+    done || true
     
     
     # Clean up temporary directory
     rm -rf "$temp_dir"
+
+    print_statistics
 }
 
 ##############################################################################
@@ -538,7 +606,7 @@ rm_files_not_matching_pattern_update_statistics() {
     echo -e "${BLUE}Scanning for files without pattern to remove...${NC}"
     
     # Find all files except zip and gz
-    find "$directory" -type f -print0 | while IFS= read -r -d '' file; do
+    find "$directory" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
         local rel_path
         rel_path="${file#$directory/}"
         
@@ -568,11 +636,11 @@ rm_files_not_matching_pattern_update_statistics() {
                 echo -e "${GREEN}✓ Kept (has pattern): $rel_path${NC}"
             fi
         fi
-    done
+    done || true
     
     # Remove empty nested directories recursively
     local dirs_removed=0
-    find "$directory" -type d -empty -print0 | while IFS= read -r -d '' dir; do
+    find "$directory" -type d -empty -print0 2>/dev/null | while IFS= read -r -d '' dir; do
         if [[ -d "$dir" ]]; then
             if rmdir "$dir" 2>/dev/null; then
                 ((dirs_removed++))
@@ -582,7 +650,7 @@ rm_files_not_matching_pattern_update_statistics() {
                 fi
             fi
         fi
-    done
+    done || true
     
     echo -e "${YELLOW}Cleanup Summary:${NC}"
     echo -e "${YELLOW}  Files removed: $removed_count${NC}"
@@ -595,8 +663,10 @@ rm_files_not_matching_pattern_update_statistics() {
     ((TOTAL_FILES += kept_count))
     
     # Increase how many lines has to be processed
-    local total_lines=$(find "$directory" -type f -print0 -not -name "*.zip" -not -name "*.gz" | xargs -0 wc -l | tail -n 1 | awk '{print $1}')
-    ((TOTAL_LINES += total_lines))
+    local total_lines=$(find "$directory" -type f -not -name "*.zip" -not -name "*.gz" -print0 2>/dev/null | xargs -0 wc -l 2>/dev/null | tail -n 1 | awk '{print $1}')
+    if [[ -n "$total_lines" && "$total_lines" =~ ^[0-9]+$ ]]; then
+        ((TOTAL_LINES += total_lines))
+    fi
 }
 
 ##############################################################################
@@ -613,10 +683,12 @@ search_patterns() {
     
     # Count total files first for percentage calculation
     echo -e "${BLUE}Counting total files...${NC}"
-    TOTAL_FILES=$(find "$INPUT_DIR" -type f -print0 | wc -l)
+    TOTAL_FILES=$(find "$INPUT_DIR" -type f | wc -l)
     # Count total lines first for percentage calculation
-    local total_lines=$(find "$directory" -type f -print0 -not -name "*.zip" -not -name "*.gz" | xargs -0 wc -l | tail -n 1 | awk '{print $1}')
-    ((TOTAL_LINES += total_lines))
+    local total_lines=$(find "$INPUT_DIR" -type f -not -name "*.zip" -not -name "*.gz" -print0 2>/dev/null | xargs -0 wc -l 2>/dev/null | tail -n 1 | awk '{print $1}')
+    if [[ -n "$total_lines" && "$total_lines" =~ ^[0-9]+$ ]]; then
+        ((TOTAL_LINES += total_lines))
+    fi
 
     echo -e "${BLUE}Found $TOTAL_FILES file(s) to scan${NC}"
     echo ""
@@ -628,7 +700,7 @@ search_patterns() {
 
 
     # Find and process all files
-    find "$INPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+    find "$INPUT_DIR" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
         
         # Calculate relative path from INPUT_DIR
         local rel_path
@@ -652,65 +724,9 @@ search_patterns() {
                 fi
                 ;;
         esac
-    done
+    done || true
 
-    # Calculate total time
-    local end_time=$(date +%s)
-    local total_time=$((end_time - START_TIME))
-    local duration_str=$(format_duration $total_time)
-    
-    # Print summary
-    echo ""
-    echo -e "${YELLOW}================================${NC}"
-    echo -e "${YELLOW}Processing Summary:${NC}"
-    echo -e "${YELLOW}  Total files scanned: $TOTAL_FILES${NC}"
-    echo -e "${YELLOW}  Total zip files scanned: $TOTAL_ZIP_FILES${NC}"
-    echo -e "${YELLOW}  Total gz files scanned: $TOTAL_GZ_FILES${NC}"
-    echo -e "${YELLOW}  Files skipped: $SKIPPED_COUNT${NC}"
-    echo ""
-    echo -e "${YELLOW}File Statistics:${NC}"
-    echo -e "${YELLOW}  Files processed: $PROCESSED_FILES out of $TOTAL_FILES (100%)${NC}"
-    
-    echo ""
-    echo -e "${YELLOW}Line Statistics:${NC}"
-    if [[ $TOTAL_LINES -gt 0 ]]; then
-        local line_percent=$((PROCESSED_LINES * 100 / TOTAL_LINES))
-        local lines_not_extracted=$((TOTAL_LINES - PROCESSED_LINES))
-        local not_extracted_percent=$((100 - line_percent))
-        echo -e "${GREEN}  Lines extracted: $PROCESSED_LINES out of $TOTAL_LINES (${line_percent}%)${NC}"
-        echo -e "${YELLOW}  Lines not extracted: $lines_not_extracted ($not_extracted_percent%)${NC}"
-    else
-        echo -e "${YELLOW}  No lines processed${NC}"
-    fi
-    
-    echo ""
-    echo -e "${YELLOW}Time Statistics:${NC}"
-    echo -e "${YELLOW}  Total processing time: $duration_str${NC}"
-    if [[ $total_time -gt 0 ]]; then
-        if [[ $PROCESSED_FILES -gt 0 ]]; then
-            local avg_time_per_file=$((total_time / PROCESSED_FILES))
-            echo -e "${YELLOW}  Average time per file: $(format_duration $avg_time_per_file)${NC}"
-        fi
-        if [[ $PROCESSED_LINES -gt 0 ]]; then
-            local lines_per_sec=$((PROCESSED_LINES / total_time))
-            if [[ $lines_per_sec -gt 0 ]]; then
-                echo -e "${YELLOW}  Processing speed: $lines_per_sec lines/second${NC}"
-            else
-                local secs_per_line=$((total_time / PROCESSED_LINES))
-                echo -e "${YELLOW}  Processing speed: ${secs_per_line}s per line${NC}"
-            fi
-        fi
-    fi
-    
-    echo ""
-    if [[ $MATCH_COUNT -eq 0 ]]; then
-        echo -e "${YELLOW}  No matching complete entries extracted.${NC}"
-    else
-        echo -e "${GREEN}  ✓ Successfully processed $MATCH_COUNT file(s)${NC}"
-        echo -e "${GREEN}  ✓ Total matched entries extracted: $ENTRY_COUNT${NC}"
-        echo -e "${GREEN}  ✓ Results saved to: $OUTPUT_DIR${NC}"
-    fi
-    echo -e "${YELLOW}================================${NC}"
+    print_statistics
 }
 
 ##############################################################################
