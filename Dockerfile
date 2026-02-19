@@ -1,24 +1,18 @@
 FROM ubuntu:22.04
 
-# Install required tools
+ARG SSH_USER=sshuser
+ARG SSH_PASSWORD=sshpass
+
 RUN apt-get update && apt-get install -y \
-    bash \
-    grep \
-    zip \
-    unzip \
-    coreutils \
-    findutils \
-    && rm -rf /var/lib/apt/lists/*
+    openssh-server \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/run/sshd \
+    && useradd -m -s /bin/bash "$SSH_USER" \
+    && echo "$SSH_USER:$SSH_PASSWORD" | chpasswd \
+    && sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
 
-# Set working directory
-WORKDIR /app
+EXPOSE 22
 
-# Copy the script
-COPY move-pattern-matching-logs.sh /app/
-RUN chmod +x /app/move-pattern-matching-logs.sh
-
-# Create test directory
-RUN mkdir -p /test-data
-
-# Set entrypoint
-ENTRYPOINT ["/app/move-pattern-matching-logs.sh"]
+CMD ["/usr/sbin/sshd", "-D", "-e"]

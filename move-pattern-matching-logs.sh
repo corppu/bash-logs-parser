@@ -26,6 +26,7 @@ PATTERN=""
 INPUT_DIR=""
 OUTPUT_DIR=""
 TIMESTAMP_REGEX='^\[?[0-9]{4}-[0-9]{2}-[0-9]{2}'  # Default: YYYY-MM-DD (with optional [)
+ARCHIVE_EXT_REGEX='\.(zip|gz|tar|tgz|tar\.gz)$'
 MATCH_COUNT=0
 ENTRY_COUNT=0
 SKIPPED_COUNT=0
@@ -34,6 +35,7 @@ PROCESSED_FILES=0
 TOTAL_FILES=0
 TOTAL_ZIP_FILES=0
 TOTAL_GZ_FILES=0
+TOTAL_TAR_FILES=0
 PROCESSED_LINES=0
 TOTAL_LINES=0
 START_TIME=0
@@ -162,7 +164,15 @@ validate_inputs() {
 ##############################################################################
 file_has_pattern() {
     local file="$1"
-    grep -q "$PATTERN" "$file" 2>/dev/null
+
+    if ! grep -q "$PATTERN" "$file" 2>/dev/null; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Skipped (no pattern match): $file${NC}"
+        fi
+        return 1
+    fi
+
+    return 0
 }
 
 ##############################################################################
@@ -176,10 +186,13 @@ zip_file_has_pattern() {
         return 0
     fi
     
-    # Check if zip contains nested archives (zip or gzip files)
-    # Look for magic bytes: "PK" for zip, gzip magic bytes
-    if zipgrep -q "^PK\|^\x1f\x8b" "$zip_file" 2>/dev/null; then
+    # Check if zip contains nested archives by name
+    if zipinfo -1 "$zip_file" 2>/dev/null | grep -qiE "$ARCHIVE_EXT_REGEX"; then
         return 0
+    fi
+
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${YELLOW}⊘ Skipped (no pattern match in zip): $zip_file${NC}"
     fi
     
     return 1
@@ -196,12 +209,80 @@ gz_file_has_pattern() {
         return 0
     fi
     
-    # Check if gzip contains nested archives (magic bytes for zip or gzip)
-    if zgrep -q "^PK\|^\x1f\x8b" "$gz_file" 2>/dev/null; then
+    # Check if gzip likely contains an archive by original name
+    if gunzip -l "$gz_file" 2>/dev/null | awk 'NR>1 {print $NF}' | grep -qiE "$ARCHIVE_EXT_REGEX"; then
         return 0
+    fi
+
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${YELLOW}⊘ Skipped (no pattern match in gz): $gz_file${NC}"
     fi
     
     return 1
+}
+
+##############################################################################
+# Get file MIME type
+##############################################################################
+get_mime_type() {
+    local file="$1"
+    file -b --mime-type -- "$file" 2>/dev/null
+}
+
+##############################################################################
+# Check if file is an archive MIME type
+##############################################################################
+is_archive_mime() {
+    local mime_type=$(get_mime_type "$1")
+
+    case "$mime_type" in
+        application/zip|application/gzip|application/x-tar)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+##############################################################################
+# Check if a gzip file is actually a tar.gz archive
+##############################################################################
+is_tar_gz_archive() {
+    local gz_file="$1"
+    tar -tzf "$gz_file" >/dev/null 2>&1
+}
+
+##############################################################################
+# Check if tar file contains pattern
+##############################################################################
+tar_file_has_pattern() {
+    local tar_file="$1"
+
+    if ! tar -xOf "$tar_file" 2>/dev/null | grep -q "$PATTERN"; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Skipped (no pattern match in tar): $tar_file${NC}"
+        fi
+        return 1
+    fi
+
+    return 0
+}
+
+##############################################################################
+# Check if tar.gz or tgz file contains pattern
+##############################################################################
+tar_gz_file_has_pattern() {
+    local tar_file="$1"
+
+    if ! tar -xOzf "$tar_file" 2>/dev/null | grep -q "$PATTERN"; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Skipped (no pattern match in tar.gz): $tar_file${NC}"
+        fi
+        return 1
+    fi
+
+    return 0
 }
 
 ##############################################################################
@@ -212,8 +293,7 @@ extract_and_filter_entries() {
     local output_file="$2"
     
     # Use grep to find line numbers matching the pattern (FAST!)
-    local pattern_lines
-    pattern_lines=$(grep -n "$PATTERN" "$input_file" 2>/dev/null | cut -d: -f1)
+    local pattern_lines=$(grep -nE "$PATTERN" "$input_file" 2>/dev/null | cut -d: -f1)
     
     if [[ -z "$pattern_lines" ]]; then
         # No matches found in this file
@@ -221,8 +301,7 @@ extract_and_filter_entries() {
     fi
     
     # Use grep to find line numbers starting with timestamp (entry boundaries)
-    local timestamp_lines
-    timestamp_lines=$(grep -n "$TIMESTAMP_REGEX" "$input_file" 2>/dev/null | cut -d: -f1)
+    local timestamp_lines=$(grep -nE "$TIMESTAMP_REGEX" "$input_file" 2>/dev/null | cut -d: -f1)
     
     if [[ -z "$timestamp_lines" ]]; then
         # No timestamp entries found, process entire file if pattern matches
@@ -256,8 +335,7 @@ extract_and_filter_entries() {
     done <<< "$pattern_lines"
     
     # Get total line count for calculating entry end boundaries
-    local total_lines
-    total_lines=$(wc -l < "$input_file")
+    local total_lines=$(wc -l < "$input_file")
     
     # Convert timestamp_lines to array for binary search
     local -a ts_array
@@ -281,6 +359,9 @@ extract_and_filter_entries() {
         
         # Extract lines from entry_start to entry_end using sed (faster than while loop)
         sed -n "${entry_start},${entry_end}p" "$input_file" >> "$output_file"
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${BLUE}  ↳ Lines ${entry_start}-${entry_end} from: $input_file${NC}"
+        fi
         ((ENTRY_COUNT++))
     done
 }
@@ -294,9 +375,6 @@ process_unzipped() {
     
     # Filter files: skip if pattern not found (optimization for huge directories)
     if ! file_has_pattern "$input_file"; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Skipped (no pattern match): $rel_path${NC}"
-        fi
         ((SKIPPED_COUNT++))
         return
     fi
@@ -346,8 +424,7 @@ process_unzipped() {
     
     # Check if output file was created and has content
     if [[ -f "$output_file" && -s "$output_file" ]]; then
-        local count
-        count=$(wc -l < "$output_file")
+        local count=$(wc -l < "$output_file")
         ((PROCESSED_LINES += count))
         
         local line_percent=0
@@ -405,6 +482,7 @@ print_statistics() {
     echo -e "${YELLOW}  Total files scanned: $TOTAL_FILES${NC}"
     echo -e "${YELLOW}  Total zip files scanned: $TOTAL_ZIP_FILES${NC}"
     echo -e "${YELLOW}  Total gz files scanned: $TOTAL_GZ_FILES${NC}"
+    echo -e "${YELLOW}  Total tar files scanned: $TOTAL_TAR_FILES${NC}"
     echo -e "${YELLOW}  Files skipped: $SKIPPED_COUNT${NC}"
     echo ""
     echo -e "${YELLOW}File Statistics:${NC}"
@@ -453,148 +531,6 @@ print_statistics() {
 }
 
 ##############################################################################
-# Process gz files
-##############################################################################
-process_gz() {
-    local gz_file="$1"
-    local rel_path="$2"
-    ((TOTAL_GZ_FILES++))
-    echo -e "${BLUE} Processing gz $TOTAL_GZ_FILES: $gz_file${NC}"
-
-
-    # Check if pattern exists in zip using zipgrep
-    if ! gz_file_has_pattern "$gz_file"; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Skipped (no pattern match in gz): $rel_path${NC}"
-        fi
-        ((SKIPPED_COUNT++))
-        return
-    fi
-    
-
-    # Create temporary directory for extraction
-    local temp_dir=$(mktemp -d)
-    if [[ "$VERBOSE" == true ]]; then
-        echo -e "${BLUE} Created temp dir for gz: $temp_dir${NC}"
-    fi
-
-    # Extract zip file contents to temporary directory
-    if ! gunzip -q "$gz_file" -d "$temp_dir" 2>/dev/null; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Failed to extract gz: $rel_path${NC}"
-        fi
-        rm -rf "$temp_dir"
-        return
-    fi
-    
-    # Remove the not matching files
-    rm_files_not_matching_pattern_update_statistics "$temp_dir"
-
-    # Process extracted contents recursively
-    # Check for nested archives (zip or gz files) and other files
-    find "$temp_dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' extracted_file; do
-        local extracted_rel_path
-        extracted_rel_path="${extracted_file#$temp_dir/}"
-        
-        ((PROCESSED_FILES++))
-
-        case "$extracted_file" in
-            *.zip)
-                # Recursively process nested zip files
-                process_zip "$extracted_file" "$rel_path/$extracted_rel_path"
-                ;;
-            *.gz)
-                # Process gzip files
-                process_gz "$extracted_file" "$rel_path/$extracted_rel_path"
-                ;;
-            *)
-                # Process regular extracted files
-                if [[ -f "$extracted_file" ]]; then
-                    process_unzipped "$extracted_file" "$rel_path/$extracted_rel_path"
-                fi
-                ;;
-        esac
-    done || true
-    
-    
-    # Clean up temporary directory
-    rm -rf "$temp_dir"
-
-    print_statistics
-}
-
-##############################################################################
-# Process zip files recursively
-##############################################################################
-process_zip() {
-    local zip_file="$1"
-    local rel_path="$2"
-
-    ((TOTAL_ZIP_FILES++))
-    echo -e "${BLUE} Processing zip $TOTAL_ZIP_FILES: $zip_file${NC}"
-    
-
-    # Check if pattern exists in zip using zipgrep
-    if ! zip_file_has_pattern "$zip_file"; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Skipped (no pattern match in zip): $rel_path${NC}"
-        fi
-        ((SKIPPED_COUNT++))
-        return
-    fi
-
-    # Create temporary directory for extraction
-    local temp_dir=$(mktemp -d)
-    if [[ "$VERBOSE" == true ]]; then
-        echo -e "${BLUE} Created temp dir for zip: $temp_dir${NC}"
-    fi
-
-    # Extract zip file contents to temporary directory
-    if ! unzip -q "$zip_file" -d "$temp_dir" 2>/dev/null; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Failed to extract zip: $rel_path${NC}"
-        fi
-        rm -rf "$temp_dir"
-        return
-    fi
-    
-    # Remove the not matching files
-    rm_files_not_matching_pattern_update_statistics "$temp_dir"
-
-    # Process extracted contents recursively
-    # Check for nested archives (zip or gz files) and other files
-    find "$temp_dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' extracted_file; do
-        local extracted_rel_path
-        extracted_rel_path="${extracted_file#$temp_dir/}"
-        
-        ((PROCESSED_FILES++))
-
-        case "$extracted_file" in
-            *.zip)
-                # Recursively process nested zip files
-                process_zip "$extracted_file" "$rel_path/$extracted_rel_path"
-                ;;
-            *.gz)
-                # Process gzip files
-                process_gz "$extracted_file" "$rel_path/$extracted_rel_path"
-                ;;
-            *)
-                # Process regular extracted files
-                if [[ -f "$extracted_file" ]]; then
-                    process_unzipped "$extracted_file" "$rel_path/$extracted_rel_path"
-                fi
-                ;;
-        esac
-    done || true
-    
-    
-    # Clean up temporary directory
-    rm -rf "$temp_dir"
-
-    print_statistics
-}
-
-##############################################################################
 # Remove files that don't contain pattern (except .zip or .gz)
 # Also increase counts such as skipped, total file and line count
 ##############################################################################
@@ -605,17 +541,14 @@ rm_files_not_matching_pattern_update_statistics() {
     
     echo -e "${BLUE}Scanning for files without pattern to remove...${NC}"
     
-    # Find all files except zip and gz
+    # Find all files except archives
     find "$directory" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
-        local rel_path
-        rel_path="${file#$directory/}"
-        
-        # Skip zip and gz files
-        case "$file" in
-            *.zip|*.gz)
-                continue
-                ;;
-        esac
+        local rel_path="${file#$directory/}"
+
+        # Skip archive files
+        if is_archive_mime "$file"; then
+            continue
+        fi
         
         # Check if file contains pattern
         if ! file_has_pattern "$file"; then
@@ -652,10 +585,12 @@ rm_files_not_matching_pattern_update_statistics() {
         fi
     done || true
     
-    echo -e "${YELLOW}Cleanup Summary:${NC}"
-    echo -e "${YELLOW}  Files removed: $removed_count${NC}"
-    echo -e "${YELLOW}  Files kept: $kept_count${NC}"
-    echo -e "${YELLOW}  Empty directories removed: $dirs_removed${NC}"
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${YELLOW}Cleanup Summary:${NC}"
+        echo -e "${YELLOW}  Files removed: $removed_count${NC}"
+        echo -e "${YELLOW}  Files kept: $kept_count${NC}"
+        echo -e "${YELLOW}  Empty directories removed: $dirs_removed${NC}"
+    fi
     
     # Increase statistics
     ((SKIPPED_COUNT += removed_count))
@@ -663,10 +598,220 @@ rm_files_not_matching_pattern_update_statistics() {
     ((TOTAL_FILES += kept_count))
     
     # Increase how many lines has to be processed
-    local total_lines=$(find "$directory" -type f -not -name "*.zip" -not -name "*.gz" -print0 2>/dev/null | xargs -0 wc -l 2>/dev/null | tail -n 1 | awk '{print $1}')
-    if [[ -n "$total_lines" && "$total_lines" =~ ^[0-9]+$ ]]; then
-        ((TOTAL_LINES += total_lines))
+    local total_lines=0
+    while IFS= read -r -d '' file; do
+        if ! is_archive_mime "$file"; then
+            local file_lines=$(wc -l < "$file" 2>/dev/null || echo 0)
+            if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
+                total_lines=$((total_lines + file_lines))
+            fi
+        fi
+    done < <(find "$directory" -type f -print0 2>/dev/null)
+    ((TOTAL_LINES += total_lines))
+}
+
+##############################################################################
+# Find and process files in a directory (regular/zip/gz)
+##############################################################################
+process_files_in_dir() {
+    local base_dir="$1"
+    local rel_prefix="$2"
+
+    find "$base_dir" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
+        local rel_path="${file#$base_dir/}"
+        local mime_type=$(get_mime_type "$file")
+
+        if [[ -n "$rel_prefix" ]]; then
+            rel_path="$rel_prefix/$rel_path"
+        fi
+
+        ((PROCESSED_FILES++))
+
+        case "$mime_type" in
+            application/zip)
+                # Recursively process nested zip files
+                process_zip "$file" "$rel_path"
+                ;;
+            application/x-tar)
+                # Process tar archives
+                process_tar "$file" "$rel_path"
+                ;;
+            application/gzip)
+                # Process gzip or tar.gz archives
+                if is_tar_gz_archive "$file"; then
+                    process_tar_gz "$file" "$rel_path"
+                else
+                    process_gz "$file" "$rel_path"
+                fi
+                ;;
+            *)
+                # Process regular files
+                if [[ -f "$file" ]]; then
+                    process_unzipped "$file" "$rel_path"
+                fi
+                ;;
+        esac
+    done || true
+}
+
+##############################################################################
+# Process tar files
+##############################################################################
+process_tar() {
+    local tar_file="$1"
+    local rel_path="$2"
+
+    ((TOTAL_TAR_FILES++))
+    echo -e "${BLUE} Processing tar $TOTAL_TAR_FILES: $tar_file${NC}"
+
+    if ! tar_file_has_pattern "$tar_file"; then
+        ((SKIPPED_COUNT++))
+        return
     fi
+
+    local temp_dir=$(mktemp -d)
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${BLUE} Created temp dir for tar: $temp_dir${NC}"
+    fi
+
+    if ! tar -xf "$tar_file" -C "$temp_dir" 2>/dev/null; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Failed to extract tar: $rel_path${NC}"
+        fi
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    rm_files_not_matching_pattern_update_statistics "$temp_dir"
+    process_files_in_dir "$temp_dir" "$rel_path"
+
+    rm -rf "$temp_dir"
+
+    print_statistics
+}
+
+##############################################################################
+# Process tar.gz or tgz files
+##############################################################################
+process_tar_gz() {
+    local tar_file="$1"
+    local rel_path="$2"
+
+    ((TOTAL_TAR_FILES++))
+    echo -e "${BLUE} Processing tar.gz $TOTAL_TAR_FILES: $tar_file${NC}"
+
+    if ! tar_gz_file_has_pattern "$tar_file"; then
+        ((SKIPPED_COUNT++))
+        return
+    fi
+
+    local temp_dir=$(mktemp -d)
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${BLUE} Created temp dir for tar.gz: $temp_dir${NC}"
+    fi
+
+    if ! tar -xzf "$tar_file" -C "$temp_dir" 2>/dev/null; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Failed to extract tar.gz: $rel_path${NC}"
+        fi
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    rm_files_not_matching_pattern_update_statistics "$temp_dir"
+    process_files_in_dir "$temp_dir" "$rel_path"
+
+    rm -rf "$temp_dir"
+
+    print_statistics
+}
+
+##############################################################################
+# Process gz files
+##############################################################################
+process_gz() {
+    local gz_file="$1"
+    local rel_path="$2"
+    ((TOTAL_GZ_FILES++))
+    echo -e "${BLUE} Processing gz $TOTAL_GZ_FILES: $gz_file${NC}"
+
+
+    # Check if pattern exists in zip using zipgrep
+    if ! gz_file_has_pattern "$gz_file"; then
+        ((SKIPPED_COUNT++))
+        return
+    fi
+    
+
+    # Create temporary directory for extraction
+    local temp_dir=$(mktemp -d)
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${BLUE} Created temp dir for gz: $temp_dir${NC}"
+    fi
+
+    # Extract zip file contents to temporary directory
+    if ! gunzip -q "$gz_file" -d "$temp_dir" 2>/dev/null; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Failed to extract gz: $rel_path${NC}"
+        fi
+        rm -rf "$temp_dir"
+        return
+    fi
+    
+    # Remove the not matching files
+    rm_files_not_matching_pattern_update_statistics "$temp_dir"
+
+    # Process extracted contents recursively
+    process_files_in_dir "$temp_dir" "$rel_path"
+    
+    # Clean up temporary directory
+    rm -rf "$temp_dir"
+
+    print_statistics
+}
+
+##############################################################################
+# Process zip files recursively
+##############################################################################
+process_zip() {
+    local zip_file="$1"
+    local rel_path="$2"
+
+    ((TOTAL_ZIP_FILES++))
+    echo -e "${BLUE} Processing zip $TOTAL_ZIP_FILES: $zip_file${NC}"
+    
+
+    # Check if pattern exists in zip using zipgrep
+    if ! zip_file_has_pattern "$zip_file"; then
+        ((SKIPPED_COUNT++))
+        return
+    fi
+
+    # Create temporary directory for extraction
+    local temp_dir=$(mktemp -d)
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${BLUE} Created temp dir for zip: $temp_dir${NC}"
+    fi
+
+    # Extract zip file contents to temporary directory
+    if ! unzip -q "$zip_file" -d "$temp_dir" 2>/dev/null; then
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${YELLOW}⊘ Failed to extract zip: $rel_path${NC}"
+        fi
+        rm -rf "$temp_dir"
+        return
+    fi
+    
+    # Remove the not matching files
+    rm_files_not_matching_pattern_update_statistics "$temp_dir"
+
+    # Process extracted contents recursively
+    process_files_in_dir "$temp_dir" "$rel_path"
+    
+    # Clean up temporary directory
+    rm -rf "$temp_dir"
+
+    print_statistics
 }
 
 ##############################################################################
@@ -685,10 +830,16 @@ search_patterns() {
     echo -e "${BLUE}Counting total files...${NC}"
     TOTAL_FILES=$(find "$INPUT_DIR" -type f | wc -l)
     # Count total lines first for percentage calculation
-    local total_lines=$(find "$INPUT_DIR" -type f -not -name "*.zip" -not -name "*.gz" -print0 2>/dev/null | xargs -0 wc -l 2>/dev/null | tail -n 1 | awk '{print $1}')
-    if [[ -n "$total_lines" && "$total_lines" =~ ^[0-9]+$ ]]; then
-        ((TOTAL_LINES += total_lines))
-    fi
+    local total_lines=0
+    while IFS= read -r -d '' file; do
+        if ! is_archive_mime "$file"; then
+            local file_lines=$(wc -l < "$file" 2>/dev/null || echo 0)
+            if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
+                total_lines=$((total_lines + file_lines))
+            fi
+        fi
+    done < <(find "$INPUT_DIR" -type f -print0 2>/dev/null)
+    ((TOTAL_LINES += total_lines))
 
     echo -e "${BLUE}Found $TOTAL_FILES file(s) to scan${NC}"
     echo ""
@@ -700,31 +851,7 @@ search_patterns() {
 
 
     # Find and process all files
-    find "$INPUT_DIR" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
-        
-        # Calculate relative path from INPUT_DIR
-        local rel_path
-        rel_path="${file#$INPUT_DIR/}"
-        
-        ((PROCESSED_FILES++))
-        
-        case "$file" in
-            *.zip)
-                # Process zip files with pattern check and recursive extraction
-                process_zip "$file" "$rel_path"
-                ;;
-            *.gz)
-                # Process gzip files
-                process_gz "$file" "$rel_path"
-                ;;
-            *)
-                # Process regular files
-                if [[ -f "$file" ]]; then
-                    process_unzipped "$file" "$rel_path"
-                fi
-                ;;
-        esac
-    done || true
+    process_files_in_dir "$INPUT_DIR" ""
 
     print_statistics
 }
