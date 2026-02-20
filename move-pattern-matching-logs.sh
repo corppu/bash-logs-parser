@@ -12,7 +12,7 @@
 #
 ##############################################################################
 
-set -e
+set -eo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
@@ -225,6 +225,14 @@ gz_file_has_pattern() {
     if gunzip -l "$gz_file" 2>/dev/null | awk 'NR>1 {print $NF}' | grep -qiE "$ARCHIVE_EXT_REGEX"; then
         return 0
     fi
+    
+    # Check if decompressed content is an archive by MIME type
+    local mime_type=$(gunzip -c "$gz_file" 2>/dev/null | file -b --mime-type -)
+    case "$mime_type" in
+        application/zip|application/x-tar)
+            return 0
+            ;;
+    esac
 
     if [[ "$VERBOSE" == true ]]; then
         echo -e "${YELLOW}⊘ Skipped (no pattern match in gz): $gz_file${NC}"
@@ -445,7 +453,7 @@ process_unzipped() {
     
     # Check if output file was created and has content
     if [[ -f "$output_file" && -s "$output_file" ]]; then
-        local count=$(wc -l < "$output_file")
+        local count=$(grep -c '' "$output_file" 2>/dev/null || echo 0)
         ((PROCESSED_LINES += count))
         
         local line_percent=0
@@ -622,12 +630,12 @@ rm_files_not_matching_pattern_update_statistics() {
     local total_lines=0
     while IFS= read -r -d '' file; do
         if ! is_archive_mime "$file"; then
-            local file_lines=$(wc -l < "$file" 2>/dev/null || echo 0)
+            local file_lines=$(grep -c '' "$file" 2>/dev/null || echo 0)
             if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
                 total_lines=$((total_lines + file_lines))
             fi
         fi
-    done < <(find "$directory" -type f -print0 2>/dev/null)
+    done < <(find "$directory" -type f -print0 2>/dev/null || true)
     ((TOTAL_LINES += total_lines))
 }
 
@@ -852,20 +860,23 @@ search_patterns() {
     
     # Count total files first for percentage calculation
     echo -e "${BLUE}Counting total files...${NC}"
-    TOTAL_FILES=$(find "$INPUT_DIR" -type f | wc -l)
+    TOTAL_FILES=$(find "$INPUT_DIR" -type f 2>/dev/null | wc -l || echo 0)
     # Count total lines first for percentage calculation
+    echo -e "${BLUE}Counting total lines...${NC}"
     local total_lines=0
     while IFS= read -r -d '' file; do
         if ! is_archive_mime "$file"; then
-            local file_lines=$(wc -l < "$file" 2>/dev/null || echo 0)
+            local file_lines=$(grep -c '' "$file" 2>/dev/null || echo 0)
             if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
                 total_lines=$((total_lines + file_lines))
             fi
         fi
-    done < <(find "$INPUT_DIR" -type f -print0 2>/dev/null)
+    done < <(find "$INPUT_DIR" -type f -print0 2>/dev/null || true)
     ((TOTAL_LINES += total_lines))
 
     echo -e "${BLUE}Found $TOTAL_FILES file(s) to scan${NC}"
+    echo -e "${BLUE}Found $TOTAL_LINES line(s) to scan${NC}"
+
     echo ""
     
     # Record start time

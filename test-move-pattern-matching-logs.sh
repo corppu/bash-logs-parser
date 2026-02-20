@@ -99,6 +99,16 @@ for pattern_dir in ssn-patterns phone-patterns combined-patterns; do
         echo -e "${RED}✗ FAIL${NC}"
         GUNZIP_FAIL=1
     fi
+    
+    # Check nested archive (gz containing zip)
+    nested_path="${ACTUAL_DIR}/${pattern_dir}/nested-archive.gz/nested-archive/test.log"
+    echo -n "Checking: ${pattern_dir}/nested-archive.gz/nested-archive/test.log ... "
+    if [[ -s "$nested_path" ]]; then
+        echo -e "${GREEN}✓ PASS${NC}"
+    else
+        echo -e "${RED}✗ FAIL (nested gz->zip extraction)${NC}"
+        GUNZIP_FAIL=1
+    fi
 done
 
 if [[ $GUNZIP_FAIL -ne 0 ]]; then
