@@ -299,8 +299,10 @@ count_lines_in_directory() {
                 esac
             done
             exit 0
-        ' _ 2>/dev/null | awk '{sum+=$1} END {print sum+0}' 2>/dev/null || echo 0)
+        ' _ 2>/dev/null | awk '{sum+=$1} END {print sum+0}' 2>/dev/null) || true
     
+    # Ensure we have a valid number
+    [[ "$total_lines" =~ ^[0-9]+$ ]] || total_lines=0
     echo "$total_lines"
 }
 
@@ -387,7 +389,8 @@ extract_and_filter_entries() {
     
     # Get total line count for calculating entry end boundaries
     # Use grep -c to count actual lines (handles files without trailing newline)
-    local total_lines=$(grep -c '' "$input_file" 2>/dev/null)
+    local total_lines=$(grep -c '' "$input_file" 2>/dev/null || echo 0)
+    [[ "$total_lines" =~ ^[0-9]+$ ]] || total_lines=0
     
     # Convert timestamp_lines to array for binary search
     local -a ts_array
@@ -485,6 +488,7 @@ process_unzipped() {
     # Check if output file was created and has content
     if [[ -f "$output_file" && -s "$output_file" ]]; then
         local count=$(grep -c '' "$output_file" 2>/dev/null || echo 0)
+        [[ "$count" =~ ^[0-9]+$ ]] || count=0
         ((PROCESSED_LINES += count))
         
         local line_percent=0
@@ -658,7 +662,8 @@ rm_files_not_matching_pattern_update_statistics() {
     ((TOTAL_FILES += kept_count))
     
     # Increase how many lines has to be processed
-    local total_lines=$(count_lines_in_directory "$directory")
+    local total_lines=$(count_lines_in_directory "$directory" || echo 0)
+    [[ "$total_lines" =~ ^[0-9]+$ ]] || total_lines=0
     ((TOTAL_LINES += total_lines))
 }
 
@@ -884,9 +889,11 @@ search_patterns() {
     # Count total files first for percentage calculation
     echo -e "${BLUE}Counting total files...${NC}"
     TOTAL_FILES=$(find "$INPUT_DIR" -type f 2>/dev/null | wc -l || echo 0)
+    [[ "$TOTAL_FILES" =~ ^[0-9]+$ ]] || TOTAL_FILES=0
     # Count total lines first for percentage calculation
     echo -e "${BLUE}Counting total lines...${NC}"
-    local total_lines=$(count_lines_in_directory "$INPUT_DIR")
+    local total_lines=$(count_lines_in_directory "$INPUT_DIR" || echo 0)
+    [[ "$total_lines" =~ ^[0-9]+$ ]] || total_lines=0
     ((TOTAL_LINES += total_lines))
 
     echo -e "${BLUE}Found $TOTAL_FILES file(s) to scan${NC}"
