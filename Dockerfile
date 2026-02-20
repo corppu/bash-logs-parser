@@ -5,6 +5,10 @@ ARG SSH_PASSWORD=sshpass
 
 RUN apt-get update && apt-get install -y \
     openssh-server \
+    file \
+    unzip \
+    tar \
+    gzip \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/run/sshd \
     && useradd -m -s /bin/bash "$SSH_USER" \

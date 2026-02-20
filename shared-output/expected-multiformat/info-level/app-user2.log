@@ -1,0 +1,4 @@
+2024-01-15 08:30:01.123 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Session started from 192.168.1.101
+2024-01-15 08:33:20.345 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - API request processed in 312ms
+2024-01-15 08:37:50.567 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Order placed: #12345
+2024-01-15 08:41:30.789 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - User profile updated successfully

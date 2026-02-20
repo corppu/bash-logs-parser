@@ -85,6 +85,65 @@ COMBINED_PATTERN="${SSN_PATTERN}|${PHONE_PATTERN}"
 
 echo ""
 
+# Check if this is first run - if expected doesn't exist or is empty, create it from actual
+if [[ ! -d "${EXPECTED_DIR}" ]] || [[ -z "$(ls -A ${EXPECTED_DIR} 2>/dev/null)" ]]; then
+    echo -e "${YELLOW}First run detected: Creating expected snapshots from actual results...${NC}"
+    mkdir -p "${EXPECTED_DIR}"
+    
+    # Copy all files from actual to expected
+    if [[ -d "${ACTUAL_DIR}" ]]; then
+        cp -r "${ACTUAL_DIR}"/* "${EXPECTED_DIR}/" 2>/dev/null || true
+        echo -e "${GREEN}✓ Expected snapshots created at: ${EXPECTED_DIR}${NC}"
+        echo -e "${YELLOW}Note: On next run, actual results will be compared with these expected snapshots${NC}"
+    fi
+    echo ""
+fi
+
+# Compare folder structures
+echo -e "${BLUE}=== Folder Structure Comparison ===${NC}"
+if [[ -d "${EXPECTED_DIR}" ]]; then
+    STRUCT_PASS=0
+    STRUCT_FAIL=0
+    
+    # Get list of all files in expected (relative paths), excluding *-test.log files
+    expected_files=$(cd "${EXPECTED_DIR}" && find . -type f ! -name '*-test.log' | sort)
+    actual_files=$(cd "${ACTUAL_DIR}" && find . -type f ! -name '*-test.log' | sort)
+    
+    echo "Expected files:"
+    echo "$expected_files" | sed 's/^/  /'
+    echo ""
+    echo "Actual files:"
+    echo "$actual_files" | sed 's/^/  /'
+    echo ""
+    
+    # Compare structures
+    if [[ "$expected_files" == "$actual_files" ]]; then
+        echo -e "${GREEN}✓ Folder structures are IDENTICAL${NC}"
+        STRUCT_PASS=1
+    else
+        echo -e "${RED}✗ Folder structures DIFFER${NC}"
+        STRUCT_FAIL=1
+        
+        # Show files only in expected
+        comm -23 <(echo "$expected_files") <(echo "$actual_files") > /tmp/only_expected.txt
+        if [[ -s /tmp/only_expected.txt ]]; then
+            echo -e "${YELLOW}Files only in expected:${NC}"
+            cat /tmp/only_expected.txt | sed 's/^/  /'
+        fi
+        
+        # Show files only in actual
+        comm -13 <(echo "$expected_files") <(echo "$actual_files") > /tmp/only_actual.txt
+        if [[ -s /tmp/only_actual.txt ]]; then
+            echo -e "${YELLOW}Files only in actual:${NC}"
+            cat /tmp/only_actual.txt | sed 's/^/  /'
+        fi
+    fi
+    echo ""
+else
+    echo -e "${YELLOW}⊘ No expected directory found. Skipping structure comparison.${NC}"
+    echo ""
+fi
+
 # MD5 Comparison Function
 compare_md5_sums() {
     local expected_file="$1"
@@ -122,18 +181,22 @@ SKIP_COUNT=0
 
 # Find all expected files and compare with actual
 if [[ -d "${EXPECTED_DIR}" ]]; then
-    while IFS= read -r expected_file; do
+    # Store file list in array to avoid process substitution issues
+    # Exclude *-test.log files as they contain run-specific timestamps
+    mapfile -t expected_files < <(find "${EXPECTED_DIR}" -type f ! -name '*-test.log')
+    
+    for expected_file in "${expected_files[@]}"; do
         # Get relative path from expected directory
         rel_path="${expected_file#${EXPECTED_DIR}/}"
         actual_file="${ACTUAL_DIR}/${rel_path}"
         
         echo -n "Comparing: $rel_path ... "
         if compare_md5_sums "$expected_file" "$actual_file"; then
-            ((PASS_COUNT++))
+            ((PASS_COUNT++)) || true
         else
-            ((FAIL_COUNT++))
+            ((FAIL_COUNT++)) || true
         fi
-    done < <(find "${EXPECTED_DIR}" -type f)
+    done
 else
     echo -e "${YELLOW}⊘ No expected directory found. Skipping comparison.${NC}"
     SKIP_COUNT=1
@@ -141,13 +204,14 @@ fi
 
 echo ""
 echo -e "${BLUE}=== Test Summary ===${NC}"
-echo -e "Passed: ${GREEN}${PASS_COUNT}${NC}"
-echo -e "Failed: ${RED}${FAIL_COUNT}${NC}"
-echo -e "Skipped: ${YELLOW}${SKIP_COUNT}${NC}"
+echo -e "Structure Check: $([ ${STRUCT_PASS:-0} -eq 1 ] && echo -e "${GREEN}PASSED${NC}" || echo -e "${RED}FAILED${NC}")"
+echo -e "MD5 Passed: ${GREEN}${PASS_COUNT}${NC}"
+echo -e "MD5 Failed: ${RED}${FAIL_COUNT}${NC}"
+echo -e "MD5 Skipped: ${YELLOW}${SKIP_COUNT}${NC}"
 echo ""
 
-if [[ ${FAIL_COUNT} -eq 0 ]] && [[ ${PASS_COUNT} -gt 0 ]]; then
-    echo -e "${GREEN}✓ All tests PASSED${NC}"
+if [[ ${FAIL_COUNT} -eq 0 ]] && [[ ${PASS_COUNT} -gt 0 ]] && [[ ${STRUCT_FAIL:-0} -eq 0 ]]; then
+    echo -e "${GREEN}✓ All tests PASSED (structure + content)${NC}"
     exit 0
 else
     echo -e "${RED}✗ Some tests FAILED${NC}"

@@ -1,0 +1,4 @@
+2024-01-15 08:32:10.012 [ERROR] User 550e8400-e29b-41d4-a716-446655440000 - Failed to connect to cache server: timeout
+2024-01-15 08:35:30.901 [ERROR] User 550e8400-e29b-41d4-a716-446655440000 - Authentication failed: invalid credentials
+2024-01-15 08:40:25.456 [ERROR] User 550e8400-e29b-41d4-a716-446655440000 - Email delivery failed for user@example.com
+2024-01-15 08:45:10.678 [ERROR] User 550e8400-e29b-41d4-a716-446655440000 - Third-party API returned error: 503 Service Unavailable

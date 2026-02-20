@@ -1,0 +1,4 @@
+2024-01-15 08:31:05.789 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - High memory usage detected (88%)
+2024-01-15 08:34:15.678 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Slow query detected: JOIN operation took 3.2s
+2024-01-15 08:39:10.123 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Network latency high: 450ms
+2024-01-15 08:43:55.345 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - CPU usage spike detected (91%)

@@ -181,10 +181,16 @@ file_has_pattern() {
 zip_file_has_pattern() {
     local zip_file="$1"
     
-    # First check if pattern exists using zipgrep
-    if zipgrep -qE "$PATTERN" "$zip_file" 2>/dev/null; then
-        return 0
-    fi
+    # zipgrep doesn't support alternation (|) in patterns, so split and test each part
+    # Convert pattern like "pat1|pat2|pat3" into array
+    IFS='|' read -ra pattern_parts <<< "$PATTERN"
+    
+    # Test each pattern part separately
+    for part in "${pattern_parts[@]}"; do
+        if zipgrep -qE "$part" "$zip_file" 2>/dev/null; then
+            return 0
+        fi
+    done
     
     # Check if zip contains nested archives by name
     if zipinfo -1 "$zip_file" 2>/dev/null | grep -qiE "$ARCHIVE_EXT_REGEX"; then
@@ -204,10 +210,16 @@ zip_file_has_pattern() {
 gz_file_has_pattern() {
     local gz_file="$1"
     
-    # First check if pattern exists using zgrep
-    if zgrep -qE "$PATTERN" "$gz_file" 2>/dev/null; then
-        return 0
-    fi
+    # zgrep might not support alternation (|) in patterns, so split and test each part
+    # Convert pattern like "pat1|pat2|pat3" into array
+    IFS='|' read -ra pattern_parts <<< "$PATTERN"
+    
+    # Test each pattern part separately
+    for part in "${pattern_parts[@]}"; do
+        if zgrep -qE "$part" "$gz_file" 2>/dev/null; then
+            return 0
+        fi
+    done
     
     # Check if gzip likely contains an archive by original name
     if gunzip -l "$gz_file" 2>/dev/null | awk 'NR>1 {print $NF}' | grep -qiE "$ARCHIVE_EXT_REGEX"; then
@@ -335,7 +347,8 @@ extract_and_filter_entries() {
     done <<< "$pattern_lines"
     
     # Get total line count for calculating entry end boundaries
-    local total_lines=$(wc -l < "$input_file")
+    # Use grep -c to count actual lines (handles files without trailing newline)
+    local total_lines=$(grep -c '' "$input_file" 2>/dev/null)
     
     # Convert timestamp_lines to array for binary search
     local -a ts_array

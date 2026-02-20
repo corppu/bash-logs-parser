@@ -1,0 +1,16 @@
+2024-01-15 08:30:01.123 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Session started from 192.168.1.101
+2024-01-15 08:30:15.456 [DEBUG] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Database connection pool initialized
+2024-01-15 08:31:05.789 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - High memory usage detected (88%)
+2024-01-15 08:32:10.012 [ERROR] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Failed to connect to cache server: connection refused
+2024-01-15 08:33:20.345 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - API request processed in 312ms
+2024-01-15 08:34:15.678 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Slow query detected: JOIN operation took 3.2s
+2024-01-15 08:35:30.901 [ERROR] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Authentication token expired
+2024-01-15 08:36:45.234 [DEBUG] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Cache miss for key: user:6ba7b810-9dad-11d1-80b4-00c04fd430c8:session
+2024-01-15 08:37:50.567 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Order placed: #12345
+2024-01-15 08:38:55.890 [CRITICAL] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Disk I/O error on primary storage
+2024-01-15 08:39:10.123 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Network latency high: 450ms
+2024-01-15 08:40:25.456 [ERROR] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Payment gateway connection lost
+2024-01-15 08:41:30.789 [INFO] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - User profile updated successfully
+2024-01-15 08:42:45.012 [DEBUG] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Executing aggregation pipeline
+2024-01-15 08:43:55.345 [WARNING] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - CPU usage spike detected (91%)
+2024-01-15 08:45:10.678 [ERROR] User 6ba7b810-9dad-11d1-80b4-00c04fd430c8 - Rate limit exceeded: 429 Too Many Requests
