@@ -286,9 +286,10 @@ count_lines_in_directory() {
         ! -name "*.zip" ! -name "*.gz" ! -name "*.tar" ! -name "*.tgz" ! -name "*.tar.gz" \
         -print0 2>/dev/null | \
         xargs -0 -P 4 -n 20 sh -c '
+            set +e  # Disable exit on error in subshell
             for file; do
                 # Quick MIME check only for remaining files
-                mime=$(file -b --mime-type "$file" 2>/dev/null)
+                mime=$(file -b --mime-type "$file" 2>/dev/null || echo "")
                 case "$mime" in
                     application/zip|application/gzip|application/x-tar)
                         ;;
@@ -297,7 +298,8 @@ count_lines_in_directory() {
                         ;;
                 esac
             done
-        ' _ 2>/dev/null | awk '{sum+=$1} END {print sum+0}' || echo 0)
+            exit 0
+        ' _ 2>/dev/null | awk '{sum+=$1} END {print sum+0}' 2>/dev/null || echo 0)
     
     echo "$total_lines"
 }
