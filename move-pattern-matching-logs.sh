@@ -262,7 +262,7 @@ is_archive_mime() {
 ##############################################################################
 is_tar_gz_archive() {
     local gz_file="$1"
-    tar -tzf "$gz_file" >/dev/null 2>&1
+    tar -tzf "$gz_file" 2>/dev/null | head -n 1 | grep -q .
 }
 
 ##############################################################################
@@ -770,8 +770,11 @@ process_gz() {
         echo -e "${BLUE} Created temp dir for gz: $temp_dir${NC}"
     fi
 
-    # Extract zip file contents to temporary directory
-    if ! gunzip -q "$gz_file" -d "$temp_dir" 2>/dev/null; then
+    local base_name=$(basename "$gz_file" .gz)
+    local output_file="$temp_dir/$base_name"
+
+    # Extract gz file contents to a deterministic filename
+    if ! gunzip -c "$gz_file" > "$output_file" 2>/dev/null; then
         if [[ "$VERBOSE" == true ]]; then
             echo -e "${YELLOW}⊘ Failed to extract gz: $rel_path${NC}"
         fi

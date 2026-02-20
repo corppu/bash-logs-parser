@@ -14,6 +14,8 @@ SHARED_OUTPUT="${SCRIPT_DIR}/shared-output"
 EXPECTED_DIR="${SHARED_OUTPUT}/expected"
 ACTUAL_DIR="${SHARED_OUTPUT}/actual"
 TEST_NAME="SSN and Phone Number Extraction"
+GUNZIP_ARCHIVE_NAME="gunzipfile.gz"
+GUNZIP_EXTRACTED_NAME="gunzipfile"
 
 # Patterns
 SSN_PATTERN="[0-9]{3}-[0-9]{2}-[0-9]{4}"
@@ -82,6 +84,27 @@ COMBINED_PATTERN="${SSN_PATTERN}|${PHONE_PATTERN}"
     -i "${INPUT_DIR}" \
     -o "${ACTUAL_DIR}/combined-patterns" \
     -v 2>&1 | tee "${ACTUAL_DIR}/combined-test.log" || true
+
+echo ""
+
+# Validation: verify gunzip output directory and content exists
+echo -e "${BLUE}=== Gunzip Output Validation ===${NC}"
+GUNZIP_FAIL=0
+for pattern_dir in ssn-patterns phone-patterns combined-patterns; do
+    gunzip_path="${ACTUAL_DIR}/${pattern_dir}/${GUNZIP_ARCHIVE_NAME}/${GUNZIP_EXTRACTED_NAME}"
+    echo -n "Checking: ${pattern_dir}/${GUNZIP_ARCHIVE_NAME}/${GUNZIP_EXTRACTED_NAME} ... "
+    if [[ -s "$gunzip_path" ]]; then
+        echo -e "${GREEN}✓ PASS${NC}"
+    else
+        echo -e "${RED}✗ FAIL${NC}"
+        GUNZIP_FAIL=1
+    fi
+done
+
+if [[ $GUNZIP_FAIL -ne 0 ]]; then
+    echo -e "${RED}✗ Gunzip validation failed${NC}"
+    exit 1
+fi
 
 echo ""
 
