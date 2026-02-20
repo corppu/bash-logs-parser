@@ -1,0 +1,13 @@
+2024-01-15 08:30:45.123 CREATE user id=1 name=John Doe email=john@example.com ssn=123-45-6789
+2024-01-15 08:31:10.456 READ user id=1
+2024-01-15 08:32:20.789 UPDATE user id=1 {"name":"John Smith","phone":"(555) 123-4567"}
+2024-01-15 08:33:05.012 DELETE user id=1
+2024-01-15 09:15:30.345 CREATE order id=101 user_id=2 total=99.99 ssn=987-65-4321
+2024-01-15 09:16:45.678 READ order id=101
+2024-01-15 09:17:55.901 UPDATE order id=101 {"status":"shipped","phone":"(555) 987-6543"}
+2024-01-15 09:18:20.234 DELETE order id=101
+2024-01-15 10:45:12.567 CREATE product id=501 sku=PROD-A ssn=456-78-9012
+2024-01-15 10:46:30.890 READ product id=501
+2024-01-15 10:47:45.123 UPDATE product id=501 {"price":29.99,"contact":"555-234-5678"}
+2024-01-15 10:48:55.456 DELETE product id=501
++358401234567

@@ -165,7 +165,7 @@ validate_inputs() {
 file_has_pattern() {
     local file="$1"
 
-    if ! grep -q "$PATTERN" "$file" 2>/dev/null; then
+    if ! grep -qE "$PATTERN" "$file" 2>/dev/null; then
         if [[ "$VERBOSE" == true ]]; then
             echo -e "${YELLOW}⊘ Skipped (no pattern match): $file${NC}"
         fi
@@ -182,7 +182,7 @@ zip_file_has_pattern() {
     local zip_file="$1"
     
     # First check if pattern exists using zipgrep
-    if zipgrep -q "$PATTERN" "$zip_file" 2>/dev/null; then
+    if zipgrep -qE "$PATTERN" "$zip_file" 2>/dev/null; then
         return 0
     fi
     
@@ -205,7 +205,7 @@ gz_file_has_pattern() {
     local gz_file="$1"
     
     # First check if pattern exists using zgrep
-    if zgrep -q "$PATTERN" "$gz_file" 2>/dev/null; then
+    if zgrep -qE "$PATTERN" "$gz_file" 2>/dev/null; then
         return 0
     fi
     
@@ -259,7 +259,7 @@ is_tar_gz_archive() {
 tar_file_has_pattern() {
     local tar_file="$1"
 
-    if ! tar -xOf "$tar_file" 2>/dev/null | grep -q "$PATTERN"; then
+    if ! tar -xOf "$tar_file" 2>/dev/null | grep -qE "$PATTERN"; then
         if [[ "$VERBOSE" == true ]]; then
             echo -e "${YELLOW}⊘ Skipped (no pattern match in tar): $tar_file${NC}"
         fi
@@ -275,7 +275,7 @@ tar_file_has_pattern() {
 tar_gz_file_has_pattern() {
     local tar_file="$1"
 
-    if ! tar -xOzf "$tar_file" 2>/dev/null | grep -q "$PATTERN"; then
+    if ! tar -xOzf "$tar_file" 2>/dev/null | grep -qE "$PATTERN"; then
         if [[ "$VERBOSE" == true ]]; then
             echo -e "${YELLOW}⊘ Skipped (no pattern match in tar.gz): $tar_file${NC}"
         fi
@@ -305,7 +305,7 @@ extract_and_filter_entries() {
     
     if [[ -z "$timestamp_lines" ]]; then
         # No timestamp entries found, process entire file if pattern matches
-        cat "$input_file" >> "$output_file"
+        cat "$input_file" > "$output_file"
         ((ENTRY_COUNT++))
         return
     fi
@@ -344,6 +344,7 @@ extract_and_filter_entries() {
     done <<< "$timestamp_lines"
     
     # Extract and write complete entries
+    local first_write=true
     for entry_start in $(printf '%s\n' "${!entries_to_extract[@]}" | sort -n); do
         # Find the next timestamp line to determine entry end
         local entry_end=$total_lines
@@ -357,8 +358,15 @@ extract_and_filter_entries() {
             fi
         done
         
-        # Extract lines from entry_start to entry_end using sed (faster than while loop)
-        sed -n "${entry_start},${entry_end}p" "$input_file" >> "$output_file"
+        # Extract lines from entry_start to entry_end using sed
+        # Use > for first write, >> for subsequent writes
+        if [[ "$first_write" == true ]]; then
+            sed -n "${entry_start},${entry_end}p" "$input_file" > "$output_file"
+            first_write=false
+        else
+            sed -n "${entry_start},${entry_end}p" "$input_file" >> "$output_file"
+        fi
+        
         if [[ "$VERBOSE" == true ]]; then
             echo -e "${BLUE}  ↳ Lines ${entry_start}-${entry_end} from: $input_file${NC}"
         fi

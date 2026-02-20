@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  pattern-test:
+    build: .
+    image: pattern-matcher:latest
+    container_name: pattern-test
+    ports:
+      - "2222:22"
+    volumes:
+      - ./shared-output:/home/sshuser/shared-output
+    environment:
+      SSH_USER: sshuser
+      SSH_PASSWORD: sshpass
+    command: /usr/sbin/sshd -D -e

@@ -1,0 +1,3 @@
+2024-01-15 08:30:45.789 CREATE session id=s001 user_id=1 ssn=123-45-6789
+2024-01-15 09:15:30.901 CREATE invoice id=i001 order_id=101 ssn=987-65-4321
+2024-01-15 10:45:12.123 CREATE cart id=c001 user_id=3 ssn=456-78-9012

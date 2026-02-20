@@ -1,0 +1,19 @@
+# Test output directories
+shared-output/actual/
+shared-output/actual/*
+
+# Node modules
+node_modules/
+
+# Build artifacts
+*.o
+*.so
+*.pyc
+__pycache__/
+fulltest.log
+shared-output/expected/combined-test.log
+shared-output/expected/phone-test.log
+shared-output/expected/ssn-test.log
+test-results.txt
+test-result.txt
+test-output.txt
