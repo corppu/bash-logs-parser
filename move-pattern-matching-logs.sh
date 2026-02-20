@@ -274,6 +274,35 @@ is_tar_gz_archive() {
 }
 
 ##############################################################################
+# Fast line counter for a directory (excludes archives)
+##############################################################################
+count_lines_in_directory() {
+    local directory="$1"
+    local total_lines=0
+    
+    # Use find with file to filter archives efficiently, then xargs for parallel counting
+    # Filter out common archive extensions first for speed
+    total_lines=$(find "$directory" -type f \
+        ! -name "*.zip" ! -name "*.gz" ! -name "*.tar" ! -name "*.tgz" ! -name "*.tar.gz" \
+        -print0 2>/dev/null | \
+        xargs -0 -P 4 -n 20 sh -c '
+            for file; do
+                # Quick MIME check only for remaining files
+                mime=$(file -b --mime-type "$file" 2>/dev/null)
+                case "$mime" in
+                    application/zip|application/gzip|application/x-tar)
+                        ;;
+                    *)
+                        grep -c "" "$file" 2>/dev/null || echo 0
+                        ;;
+                esac
+            done
+        ' _ 2>/dev/null | awk '{sum+=$1} END {print sum+0}' || echo 0)
+    
+    echo "$total_lines"
+}
+
+##############################################################################
 # Check if tar file contains pattern
 ##############################################################################
 tar_file_has_pattern() {
@@ -627,15 +656,7 @@ rm_files_not_matching_pattern_update_statistics() {
     ((TOTAL_FILES += kept_count))
     
     # Increase how many lines has to be processed
-    local total_lines=0
-    while IFS= read -r -d '' file; do
-        if ! is_archive_mime "$file"; then
-            local file_lines=$(grep -c '' "$file" 2>/dev/null || echo 0)
-            if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
-                total_lines=$((total_lines + file_lines))
-            fi
-        fi
-    done < <(find "$directory" -type f -print0 2>/dev/null || true)
+    local total_lines=$(count_lines_in_directory "$directory")
     ((TOTAL_LINES += total_lines))
 }
 
@@ -863,15 +884,7 @@ search_patterns() {
     TOTAL_FILES=$(find "$INPUT_DIR" -type f 2>/dev/null | wc -l || echo 0)
     # Count total lines first for percentage calculation
     echo -e "${BLUE}Counting total lines...${NC}"
-    local total_lines=0
-    while IFS= read -r -d '' file; do
-        if ! is_archive_mime "$file"; then
-            local file_lines=$(grep -c '' "$file" 2>/dev/null || echo 0)
-            if [[ "$file_lines" =~ ^[0-9]+$ ]]; then
-                total_lines=$((total_lines + file_lines))
-            fi
-        fi
-    done < <(find "$INPUT_DIR" -type f -print0 2>/dev/null || true)
+    local total_lines=$(count_lines_in_directory "$INPUT_DIR")
     ((TOTAL_LINES += total_lines))
 
     echo -e "${BLUE}Found $TOTAL_FILES file(s) to scan${NC}"
