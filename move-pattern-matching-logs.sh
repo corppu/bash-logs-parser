@@ -175,71 +175,6 @@ file_has_pattern() {
     return 0
 }
 
-##############################################################################
-# Check if zip file contains pattern (using zipgrep) or nested archives
-##############################################################################
-zip_file_has_pattern() {
-    local zip_file="$1"
-    
-    # zipgrep doesn't support alternation (|) in patterns, so split and test each part
-    # Convert pattern like "pat1|pat2|pat3" into array
-    IFS='|' read -ra pattern_parts <<< "$PATTERN"
-    
-    # Test each pattern part separately
-    for part in "${pattern_parts[@]}"; do
-        if zipgrep -qE "$part" "$zip_file" 2>/dev/null; then
-            return 0
-        fi
-    done
-    
-    # Check if zip contains nested archives by name
-    if zipinfo -1 "$zip_file" 2>/dev/null | grep -qiE "$ARCHIVE_EXT_REGEX"; then
-        return 0
-    fi
-
-    if [[ "$VERBOSE" == true ]]; then
-        echo -e "${YELLOW}⊘ Skipped (no pattern match in zip): $zip_file${NC}"
-    fi
-    
-    return 1
-}
-
-##############################################################################
-# Check if gzip file contains pattern or nested archives
-##############################################################################
-gz_file_has_pattern() {
-    local gz_file="$1"
-    
-    # zgrep might not support alternation (|) in patterns, so split and test each part
-    # Convert pattern like "pat1|pat2|pat3" into array
-    IFS='|' read -ra pattern_parts <<< "$PATTERN"
-    
-    # Test each pattern part separately
-    for part in "${pattern_parts[@]}"; do
-        if zgrep -qE "$part" "$gz_file" 2>/dev/null; then
-            return 0
-        fi
-    done
-    
-    # Check if gzip likely contains an archive by original name
-    if gunzip -l "$gz_file" 2>/dev/null | awk 'NR>1 {print $NF}' | grep -qiE "$ARCHIVE_EXT_REGEX"; then
-        return 0
-    fi
-    
-    # Check if decompressed content is an archive by MIME type
-    local mime_type=$(gunzip -c "$gz_file" 2>/dev/null | file -b --mime-type -)
-    case "$mime_type" in
-        application/zip|application/x-tar)
-            return 0
-            ;;
-    esac
-
-    if [[ "$VERBOSE" == true ]]; then
-        echo -e "${YELLOW}⊘ Skipped (no pattern match in gz): $gz_file${NC}"
-    fi
-    
-    return 1
-}
 
 ##############################################################################
 # Get file MIME type
@@ -306,37 +241,6 @@ count_lines_in_directory() {
     echo "$total_lines"
 }
 
-##############################################################################
-# Check if tar file contains pattern
-##############################################################################
-tar_file_has_pattern() {
-    local tar_file="$1"
-
-    if ! tar -xOf "$tar_file" 2>/dev/null | grep -qE "$PATTERN"; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Skipped (no pattern match in tar): $tar_file${NC}"
-        fi
-        return 1
-    fi
-
-    return 0
-}
-
-##############################################################################
-# Check if tar.gz or tgz file contains pattern
-##############################################################################
-tar_gz_file_has_pattern() {
-    local tar_file="$1"
-
-    if ! tar -xOzf "$tar_file" 2>/dev/null | grep -qE "$PATTERN"; then
-        if [[ "$VERBOSE" == true ]]; then
-            echo -e "${YELLOW}⊘ Skipped (no pattern match in tar.gz): $tar_file${NC}"
-        fi
-        return 1
-    fi
-
-    return 0
-}
 
 ##############################################################################
 # Extract and filter complete log entries
@@ -721,11 +625,6 @@ process_tar() {
     ((TOTAL_TAR_FILES++))
     echo -e "${BLUE} Processing tar $TOTAL_TAR_FILES: $tar_file${NC}"
 
-    if ! tar_file_has_pattern "$tar_file"; then
-        ((SKIPPED_COUNT++))
-        return
-    fi
-
     local temp_dir=$(mktemp -d)
     if [[ "$VERBOSE" == true ]]; then
         echo -e "${BLUE} Created temp dir for tar: $temp_dir${NC}"
@@ -757,11 +656,6 @@ process_tar_gz() {
     ((TOTAL_TAR_FILES++))
     echo -e "${BLUE} Processing tar.gz $TOTAL_TAR_FILES: $tar_file${NC}"
 
-    if ! tar_gz_file_has_pattern "$tar_file"; then
-        ((SKIPPED_COUNT++))
-        return
-    fi
-
     local temp_dir=$(mktemp -d)
     if [[ "$VERBOSE" == true ]]; then
         echo -e "${BLUE} Created temp dir for tar.gz: $temp_dir${NC}"
@@ -791,13 +685,6 @@ process_gz() {
     local rel_path="$2"
     ((TOTAL_GZ_FILES++))
     echo -e "${BLUE} Processing gz $TOTAL_GZ_FILES: $gz_file${NC}"
-
-
-    # Check if pattern exists in zip using zipgrep
-    if ! gz_file_has_pattern "$gz_file"; then
-        ((SKIPPED_COUNT++))
-        return
-    fi
     
 
     # Create temporary directory for extraction
@@ -839,13 +726,6 @@ process_zip() {
 
     ((TOTAL_ZIP_FILES++))
     echo -e "${BLUE} Processing zip $TOTAL_ZIP_FILES: $zip_file${NC}"
-    
-
-    # Check if pattern exists in zip using zipgrep
-    if ! zip_file_has_pattern "$zip_file"; then
-        ((SKIPPED_COUNT++))
-        return
-    fi
 
     # Create temporary directory for extraction
     local temp_dir=$(mktemp -d)
